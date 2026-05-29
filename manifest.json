@@ -1,0 +1,14 @@
+{
+  "name": "yap",
+  "short_name": "yap",
+  "description": "Minimal chat on your Solid pod — meeting:LongChat messages stored as JSON-LD. Open a room, post, poll. Codename for the chat suite.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#7c3aed",
+  "theme_color": "#7c3aed",
+  "handles": ["url"],
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

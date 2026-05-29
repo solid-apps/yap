@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>yap</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root{ --p:#7c3aed; --p-d:#6d28d9; --line:#e6e3f0; --mut:#6b7280; --bg:#f5f3fb; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1f2230;background:var(--bg);display:flex;flex-direction:column;height:100dvh}
+  .top{display:flex;align-items:center;gap:.6rem;background:linear-gradient(135deg,var(--p) 0%,var(--p-d) 100%);color:#fff;padding:.6rem .9rem;flex:0 0 auto}
+  .top b{font-weight:800;letter-spacing:.03em}
+  .top .title{font-weight:600;font-size:.95rem;opacity:.95;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+  .top .sp{margin-left:auto}
+  .top button{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:.32rem .6rem;font:inherit;font-size:.82rem;cursor:pointer}
+  .top button:hover{background:rgba(255,255,255,.28)}
+  .top a.root{color:rgba(255,255,255,.85);text-decoration:none;font-size:.82rem}
+  .wrap{flex:1 1 auto;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.5rem}
+  .center{margin:auto;max-width:30rem;text-align:center;color:var(--mut)}
+  .center h2{color:#1f2230}
+  .msg{max-width:78%;padding:.45rem .7rem;border-radius:13px;background:#fff;border:1px solid var(--line);align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.03)}
+  .msg.mine{align-self:flex-end;background:#ede9fe;border-color:#ddd6fe}
+  .msg .who{font-size:.72rem;font-weight:700;color:var(--p-d);margin-bottom:.05rem}
+  .msg.mine .who{display:none}
+  .msg .txt{white-space:pre-wrap;word-break:break-word}
+  .msg .txt a{color:var(--p-d)}
+  .msg .t{font-size:.66rem;color:var(--mut);margin-top:.1rem;text-align:right}
+  .composer{flex:0 0 auto;display:flex;gap:.5rem;padding:.6rem;border-top:1px solid var(--line);background:#fff}
+  .composer textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font:inherit;max-height:7rem}
+  .composer textarea:focus{outline:none;border-color:var(--p)}
+  .composer button{background:var(--p);color:#fff;border:0;border-radius:10px;padding:0 1.05rem;font:inherit;font-weight:700;cursor:pointer}
+  .composer button:hover{background:var(--p-d)}
+  .composer button:disabled{opacity:.5;cursor:not-allowed}
+  .err{color:#c0392b;font-size:.82rem;padding:0 .6rem .4rem}
+  .hint{font-size:.8rem;color:var(--mut)}
+  input.room{width:100%;border:1px solid var(--line);border-radius:8px;padding:.5rem .6rem;font:inherit;margin:.5rem 0}
+  .lnk{color:var(--p-d);cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="top">
+  <b>yap</b><span class="title" id="title"></span>
+  <span class="sp"></span>
+  <button id="switch" title="Open another room">Room</button>
+  <a class="root" href="../../../">&uarr; root</a>
+</div>
+<div class="wrap" id="wrap"></div>
+<div class="err" id="err"></div>
+<form class="composer" id="composer" style="display:none">
+  <textarea id="input" rows="1" placeholder="Message… (Enter to send)" autocomplete="off"></textarea>
+  <button type="submit" id="send">Send</button>
+</form>
+
+<script src="https://unpkg.com/xlogin"></script>
+<script>
+// yap - minimal Solid-pod chat. v1: pod rooms on the Solid Chat data model
+// (meeting:LongChat + flow:Message), stored/read as JSON-LD via content
+// negotiation. Read + post + poll. Real-time + nostr come in later phases.
+"use strict";
+var FLOW="http://www.w3.org/2005/01/wf/flow#", SIOC="http://rdfs.org/sioc/ns#",
+    DCT="http://purl.org/dc/terms/", FOAF="http://xmlns.com/foaf/0.1/",
+    MEET="http://www.w3.org/ns/pim/meeting#";
+var wrap=document.getElementById("wrap"), titleEl=document.getElementById("title"),
+    composer=document.getElementById("composer"), input=document.getElementById("input"),
+    sendBtn=document.getElementById("send"), errEl=document.getElementById("err");
+var ROOM=null, MYNAME=null, SIG=null, POLL=null, TITLE="";
+
+function me(){ return window.xlogin && window.xlogin.id; }
+function authFetch(u,o){ return ((window.xlogin && window.xlogin.authFetch)||fetch)(u,o); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function arr(v){ return Array.isArray(v)?v:(v==null?[]:[v]); }
+function lit(v){ if(v==null)return null; if(typeof v!=="object")return v; if(Array.isArray(v))return v.length?lit(v[0]):null; return v["@value"]!=null?v["@value"]:(v["@id"]!=null?v["@id"]:null); }
+function idOf(v){ if(v==null)return null; if(typeof v==="string")return v; if(Array.isArray(v))return v.length?idOf(v[0]):null; return v["@id"]||null; }
+function nodes(doc){ var acc=[]; collectNodes(doc,acc); return acc; }   // any JSON-LD shape: top-level, @graph, or embedded nodes
+function collectNodes(x,acc){
+  if(Array.isArray(x)){ for(var i=0;i<x.length;i++)collectNodes(x[i],acc); return; }
+  if(x&&typeof x==="object"){
+    if(x["@value"]!==undefined) return;            // literal value object, not a node
+    acc.push(x);
+    for(var k in x){ if(k==="@context"||k==="@id"||k==="@type"||k==="@value")continue; collectNodes(x[k],acc); }
+  }
+}
+function pget(node,full,compact){ var v=node[full]; if(v===undefined)v=node[compact]; return v; }
+function typeIs(node,suffix){ var t=node["@type"]||node["a"]; return arr(t).some(function(x){ x=idOf(x)||x; return typeof x==="string" && new RegExp("[#/:]"+suffix+"$").test(x); }); }
+function shortId(uri){ if(!uri)return "someone"; try{ return new URL(uri).hostname; }catch(e){} return String(uri).replace(/^.*[:#/]/,"").slice(0,16)||"someone"; }
+
+// --- parse a LongChat doc (any JSON-LD shape) into a sorted message list ---
+function parseRoom(doc){
+  var ns=nodes(doc), names={}, msgs=[], title=null;
+  ns.forEach(function(n){
+    var id=idOf(n["@id"]||n);
+    var nm=lit(pget(n,FOAF+"name","foaf:name")); if(id&&nm)names[id]=nm;
+    if(typeIs(n,"LongChat")){ var t=lit(pget(n,DCT+"title","dct:title")); if(t)title=t; }
+  });
+  ns.forEach(function(n){
+    if(!typeIs(n,"Message")) return;
+    var mk=pget(n,FOAF+"maker","foaf:maker");
+    var maker=idOf(mk);
+    var inlineName=null; if(mk&&typeof mk==="object"&&!Array.isArray(mk)) inlineName=lit(pget(mk,FOAF+"name","foaf:name"));
+    if(mk&&Array.isArray(mk)&&mk[0]&&typeof mk[0]==="object") inlineName=lit(pget(mk[0],FOAF+"name","foaf:name"));
+    msgs.push({
+      id: idOf(n["@id"]||n),
+      content: lit(pget(n,SIOC+"content","sioc:content")),
+      created: lit(pget(n,DCT+"created","dct:created")),
+      maker: maker,
+      name: inlineName || (maker&&names[maker]) || shortId(maker)
+    });
+  });
+  msgs.sort(function(a,b){ return (a.created||"")<(b.created||"")?-1:(a.created||"")>(b.created||"")?1:(a.id<b.id?-1:1); });
+  return { title:title, messages:msgs };
+}
+
+// --- build the compact JSON-LD doc we PUT back ---
+function buildDoc(title,msgs){
+  return {
+    "@context":{ flow:FLOW, sioc:SIOC, dct:DCT, foaf:FOAF, meeting:MEET, xsd:"http://www.w3.org/2001/XMLSchema#" },
+    "@id":"#this", "@type":"meeting:LongChat",
+    "dct:title": title||"yap",
+    "flow:message": msgs.map(function(m){
+      var mk={"@id":m.maker}; if(m.name)mk["foaf:name"]=m.name;
+      return { "@id":m.id, "@type":"flow:Message", "sioc:content":m.content,
+        "dct:created":{"@value":m.created,"@type":"xsd:dateTime"}, "foaf:maker":mk };
+    })
+  };
+}
+
+function loadRoom(url){
+  return authFetch(url,{headers:{Accept:"application/ld+json"}}).then(function(r){
+    if(r.status===404) return { missing:true };
+    if(!r.ok) return { error:"HTTP "+r.status };
+    return r.json().then(function(j){ return parseRoom(j); }).catch(function(){ return { error:"bad JSON-LD" }; });
+  }).catch(function(){ return { error:"network" }; });
+}
+
+function putDoc(url,doc){
+  return authFetch(url,{ method:"PUT", headers:{"Content-Type":"application/ld+json"}, body:JSON.stringify(doc) })
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return true; });
+}
+
+// post = load latest, append, PUT (v1: yap owns the doc; races accepted)
+function post(text){
+  var now=new Date().toISOString();
+  var msg={ id:"#msg-"+Date.now()+"-"+Math.random().toString(36).slice(2,8),
+            content:text, created:now, maker:me(), name:MYNAME };
+  return loadRoom(ROOM).then(function(room){
+    var existing=(room&&room.messages)||[];
+    var title=(room&&room.title)||TITLE||"yap";
+    return putDoc(ROOM, buildDoc(title, existing.concat([msg])));
+  });
+}
+
+function ensureRoom(url){
+  return loadRoom(url).then(function(room){
+    if(room&&room.missing){ return putDoc(url, buildDoc("yap", [])).then(function(){ return { title:"yap", messages:[] }; }); }
+    return room;
+  });
+}
+
+// --- profile name (Solid) / short id (nostr) ---
+function loadMyName(){
+  var x=window.xlogin; if(!x||!x.id){ MYNAME=null; return Promise.resolve(); }
+  if(x.type==="nostr"){ MYNAME="nostr:"+String(x.id).replace(/^.*[:#/]/,"").slice(0,10); return Promise.resolve(); }
+  return authFetch(String(x.id).replace(/#.*$/,""),{headers:{Accept:"application/ld+json"}})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(j){ var who=String(x.id); nodes(j).forEach(function(n){ if((idOf(n["@id"])||"")===who){ var nm=lit(pget(n,FOAF+"name","foaf:name")); if(nm)MYNAME=nm; } }); if(!MYNAME)MYNAME=shortId(who); })
+    .catch(function(){ MYNAME=shortId(String(x.id)); });
+}
+
+function podRoot(){ var x=window.xlogin; if(!x||!x.id)return null; return String(x.id).replace(/#.*$/,"").replace(/\/profile\/card$|\/[^\/]*$/,""); }
+function defaultRoom(){ var r=podRoot(); return r?r+"/public/yap.jsonld":null; }
+
+// --- rendering ---
+function fmtTime(iso){ if(!iso)return ""; var d=new Date(iso); if(isNaN(d))return ""; var today=new Date(); var sameDay=d.toDateString()===today.toDateString(); return sameDay?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+function linkify(s){ return esc(s).replace(/(https?:\/\/[^\s<]+)/g,function(u){return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>';}); }
+
+function paint(msgs){
+  var nearBottom = wrap.scrollHeight-wrap.scrollTop-wrap.clientHeight < 80;
+  var mine=me();
+  if(!msgs.length){ wrap.innerHTML='<div class="center hint">No messages yet — say something.</div>'; return; }
+  wrap.innerHTML=msgs.map(function(m){
+    var isMine=mine&&m.maker===mine;
+    return '<div class="msg'+(isMine?" mine":"")+'">'+
+      '<div class="who">'+esc(m.name||shortId(m.maker))+'</div>'+
+      '<div class="txt">'+linkify(m.content||"")+'</div>'+
+      '<div class="t">'+esc(fmtTime(m.created))+'</div></div>';
+  }).join("");
+  if(nearBottom) wrap.scrollTop=wrap.scrollHeight;
+}
+
+function signature(msgs){ return msgs.length+"|"+(msgs.length?msgs[msgs.length-1].id+"|"+msgs[msgs.length-1].created:""); }
+
+function refresh(){
+  if(!ROOM) return;
+  loadRoom(ROOM).then(function(room){
+    if(room&&room.error){ if(!SIG)errEl.textContent="Couldn't load room: "+room.error; return; }
+    if(room&&room.missing){ errEl.textContent="Room not found (open it on a pod you can write to)."; return; }
+    errEl.textContent="";
+    if(room.title){ TITLE=room.title; titleEl.textContent="· "+room.title; }
+    var sig=signature(room.messages);
+    if(sig!==SIG){ SIG=sig; paint(room.messages); }
+  });
+}
+
+function openRoom(url){
+  ROOM=url; SIG=null; TITLE=""; titleEl.textContent=""; errEl.textContent="";
+  try{ localStorage.setItem("yap:room",url); }catch(e){}
+  wrap.innerHTML='<div class="center hint">Loading…</div>';
+  composer.style.display = me()?"flex":"none";
+  var p = me() ? ensureRoom(url) : loadRoom(url);
+  p.then(function(room){
+    if(room&&room.error){ wrap.innerHTML='<div class="center">Couldn\'t open this room ('+esc(room.error)+').</div>'; return; }
+    if(room&&room.missing){ wrap.innerHTML='<div class="center">This room doesn\'t exist yet. Sign in to a pod you can write to, or open one of your own.</div>'; return; }
+    if(room.title){ TITLE=room.title; titleEl.textContent="· "+room.title; }
+    SIG=signature(room.messages); paint(room.messages);
+    if(POLL)clearInterval(POLL); POLL=setInterval(refresh,4000);
+  });
+}
+
+function askRoom(){
+  var cur=ROOM||defaultRoom()||"";
+  var url=window.prompt("Room URL (a JSON-LD/RDF resource on a pod):", cur);
+  if(url&&url.trim()) openRoom(url.trim());
+}
+
+function welcome(){
+  composer.style.display="none"; titleEl.textContent=""; errEl.textContent="";
+  wrap.innerHTML='<div class="center"><h2>yap</h2>'+
+    '<p class="hint">Minimal chat on your Solid pod. Sign in (login pill, bottom-right) to open your room and start yapping.</p>'+
+    '<p class="hint">Or <span class="lnk" id="open">open a room by URL</span>.</p></div>';
+  var o=document.getElementById("open"); if(o)o.onclick=askRoom;
+}
+
+function start(){
+  var qs=new URLSearchParams(location.search);
+  var deep=qs.get("chat")||qs.get("url");
+  if(!me()){
+    // allow read-only viewing of a shared/deep-linked room when signed out
+    if(deep){ openRoom(deep); } else { welcome(); }
+    return;
+  }
+  loadMyName().then(function(){
+    var url=deep || (function(){try{return localStorage.getItem("yap:room");}catch(e){return null;}})() || defaultRoom();
+    if(url) openRoom(url); else welcome();
+  });
+}
+
+function submitMsg(){
+  var text=input.value.trim(); if(!text||!ROOM||!me())return;
+  sendBtn.disabled=true; input.disabled=true;
+  post(text).then(function(){ input.value=""; refresh(); }).catch(function(e){
+    errEl.textContent="Couldn't send: "+(e&&e.message||e)+(/(^|\s)403/.test(String(e&&e.message))?" (no write access to this room)":"");
+  }).then(function(){ sendBtn.disabled=false; input.disabled=false; input.focus(); });
+}
+
+composer.addEventListener("submit",function(e){ e.preventDefault(); submitMsg(); });
+input.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submitMsg(); } });
+input.addEventListener("input",function(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,112)+"px"; });
+document.getElementById("switch").onclick=askRoom;
+document.addEventListener("xlogin",start);
+document.addEventListener("xlogout",function(){ if(POLL)clearInterval(POLL); ROOM=null; MYNAME=null; welcome(); });
+start();
+</script>
+</body>
+</html>
