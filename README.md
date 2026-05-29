@@ -23,15 +23,32 @@ in phases.
   `url` intent) — share a link, anyone with read access sees it; posting needs
   write access to that resource.
 
+## Nostr rooms — chat across your devices
+
+A second room type for **live, cross-device** chat (e.g. your phone ↔ laptop ↔
+desktop), no pod or login required:
+
+- A room is a shared channel on a **nostr relay** (default `wss://melvin.me/relay`,
+  editable via the **Device** button) keyed by a `#t` tag. Open one with
+  `nostr:<name>` (e.g. `nostr:devices`) or the welcome-screen link.
+- Each device holds its **own nostr key** (generated on first use, stored locally)
+  with an editable **label** so you can tell devices apart. Messages are
+  signed `kind:42` events; delivery is **live** over the relay's WebSocket — no
+  polling.
+- Point it at a **LAN relay** (`ws://…`) for fully-local chat — but note browsers
+  block `ws://` from an `https://` page, so a plain-`ws://` LAN relay only works
+  when yap is served over **http** (e.g. from your local jspod / solid-desktop);
+  `wss://melvin.me` works from anywhere.
+
 Purple, minimal, no theme switcher.
 
 ## Later phases
 
-- Real-time updates (WebSocket / `Updates-Via`) instead of polling.
-- **Nostr** transport for cross-pod / offline-pod delivery (sidesteps the
-  localhost reachability ceiling).
+- Pod ↔ nostr mirroring (durable LongChat history + live nostr delivery in one
+  room); message encryption (NIP-44/NIP-17) for private rooms.
+- Real-time updates for pod rooms (WebSocket / `Updates-Via`) instead of polling.
 - Reactions (`schema:ReactAction`), edit/delete, media, markdown, Type Index
-  chat discovery, themes — then the desktop shell.
+  chat discovery, Turtle interop — then the desktop shell.
 
 ## Run
 

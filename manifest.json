@@ -1,7 +1,7 @@
 {
   "name": "yap",
   "short_name": "yap",
-  "description": "Minimal chat on your Solid pod — meeting:LongChat messages stored as JSON-LD. Open a room, post, poll. Codename for the chat suite.",
+  "description": "Minimal chat — pod rooms (meeting:LongChat as JSON-LD) and live nostr rooms across your own devices via a relay. Codename for the chat suite.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

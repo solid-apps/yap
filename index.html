@@ -44,6 +44,7 @@
 <div class="top">
   <b>yap</b><span class="title" id="title"></span>
   <span class="sp"></span>
+  <button id="device" title="Your device key & relay">Device</button>
   <button id="switch" title="Open another room">Room</button>
   <a class="root" href="../../../">&uarr; root</a>
 </div>
@@ -55,10 +56,24 @@
 </form>
 
 <script src="https://unpkg.com/xlogin"></script>
+<script type="module">
+  // nostr-tools (v2) — per-device keys + event signing for nostr rooms.
+  // Exposed on window.NT for the classic script below; fires "nt-ready" when loaded.
+  import * as NT from "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/+esm";
+  window.NT = {
+    generateSecretKey: NT.generateSecretKey, getPublicKey: NT.getPublicKey,
+    finalizeEvent: NT.finalizeEvent, verifyEvent: NT.verifyEvent, npubEncode: NT.nip19.npubEncode,
+    bytesToHex: function(u){ return Array.prototype.map.call(u,function(b){return ("0"+(b&255).toString(16)).slice(-2);}).join(""); },
+    hexToBytes: function(h){ var b=new Uint8Array(h.length/2); for(var i=0;i<b.length;i++)b[i]=parseInt(h.slice(i*2,i*2+2),16); return b; }
+  };
+  window.dispatchEvent(new Event("nt-ready"));
+</script>
 <script>
-// yap - minimal Solid-pod chat. v1: pod rooms on the Solid Chat data model
-// (meeting:LongChat + flow:Message), stored/read as JSON-LD via content
-// negotiation. Read + post + poll. Real-time + nostr come in later phases.
+// yap - minimal chat. Two room types:
+//  - pod rooms: Solid Chat data model (meeting:LongChat + flow:Message) stored/read
+//    as JSON-LD via content negotiation; read + post + poll(4s).
+//  - nostr rooms: a shared channel on a relay (default wss://melvin.me/relay) keyed by
+//    a #t tag; each device has its own nostr key; live push, no pod/login needed.
 "use strict";
 var FLOW="http://www.w3.org/2005/01/wf/flow#", SIOC="http://rdfs.org/sioc/ns#",
     DCT="http://purl.org/dc/terms/", FOAF="http://xmlns.com/foaf/0.1/",
@@ -66,7 +81,8 @@ var FLOW="http://www.w3.org/2005/01/wf/flow#", SIOC="http://rdfs.org/sioc/ns#",
 var wrap=document.getElementById("wrap"), titleEl=document.getElementById("title"),
     composer=document.getElementById("composer"), input=document.getElementById("input"),
     sendBtn=document.getElementById("send"), errEl=document.getElementById("err");
-var ROOM=null, MYNAME=null, SIG=null, POLL=null, TITLE="";
+var ROOM=null, MYNAME=null, SIG=null, POLL=null, TITLE="", MODE="pod", NSUB=null, NMSGS=[];
+var RELAY=(function(){try{return localStorage.getItem("yap:relay");}catch(e){}return null;})()||"wss://melvin.me/relay";
 
 function me(){ return window.xlogin && window.xlogin.id; }
 function authFetch(u,o){ return ((window.xlogin && window.xlogin.authFetch)||fetch)(u,o); }
@@ -178,10 +194,10 @@ function linkify(s){ return esc(s).replace(/(https?:\/\/[^\s<]+)/g,function(u){r
 
 function paint(msgs){
   var nearBottom = wrap.scrollHeight-wrap.scrollTop-wrap.clientHeight < 80;
-  var mine=me();
+  var mineKey = (MODE==="nostr") ? (window.NT?devPk():null) : me();
   if(!msgs.length){ wrap.innerHTML='<div class="center hint">No messages yet — say something.</div>'; return; }
   wrap.innerHTML=msgs.map(function(m){
-    var isMine=mine&&m.maker===mine;
+    var isMine = !!mineKey && ((MODE==="nostr"? m.pk : m.maker)===mineKey);
     return '<div class="msg'+(isMine?" mine":"")+'">'+
       '<div class="who">'+esc(m.name||shortId(m.maker))+'</div>'+
       '<div class="txt">'+linkify(m.content||"")+'</div>'+
@@ -204,7 +220,59 @@ function refresh(){
   });
 }
 
+// --- nostr rooms: per-device key (separate from xlogin; works without a pod) ---
+function ntReady(){ return !!window.NT; }
+function devSk(){ var h; try{h=localStorage.getItem("yap:sk");}catch(e){} if(!h){ h=window.NT.bytesToHex(window.NT.generateSecretKey()); try{localStorage.setItem("yap:sk",h);}catch(e){} } return h; }
+function devPk(){ return window.NT.getPublicKey(window.NT.hexToBytes(devSk())); }
+function devLabel(){ var l; try{l=localStorage.getItem("yap:devlabel");}catch(e){} return l||("device-"+devPk().slice(0,4)); }
+function devNpub(){ try{return window.NT.npubEncode(devPk());}catch(e){return "";} }
+function roomTag(name){ return "yap:"+name; }
+function byCreated(a,b){ return (a.created||"")<(b.created||"")?-1:(a.created||"")>(b.created||"")?1:(a.id<b.id?-1:1); }
+function evToMsg(ev){ var nm=null; (ev.tags||[]).forEach(function(t){ if(t[0]==="n")nm=t[1]; });
+  return { id:ev.id, content:ev.content, created:new Date((ev.created_at||0)*1000).toISOString(),
+    maker:"nostr:"+ev.pubkey, pk:ev.pubkey, name:nm||("@"+String(ev.pubkey).slice(0,8)) }; }
+
+function closeRoom(){ if(POLL){clearInterval(POLL);POLL=null;} if(NSUB){ NSUB.closed=true; try{NSUB.ws.close();}catch(e){} NSUB=null; } }
+
+function openNostrRoom(name){
+  if(!ntReady()){ wrap.innerHTML='<div class="center hint">Loading nostr…</div>'; window.addEventListener("nt-ready",function(){ openNostrRoom(name); },{once:true}); return; }
+  closeRoom(); MODE="nostr"; ROOM="nostr:"+name; TITLE=name; titleEl.textContent="· "+name+" · nostr"; errEl.textContent="";
+  try{localStorage.setItem("yap:room",ROOM);}catch(e){}
+  composer.style.display="flex";
+  NMSGS=[]; var seen={}, tag=roomTag(name);
+  wrap.innerHTML='<div class="center hint">Connecting to '+esc(RELAY)+'…</div>';
+  (function connect(){
+    var ws; try{ ws=new WebSocket(RELAY); }catch(e){ wrap.innerHTML='<div class="center">Bad relay URL: '+esc(RELAY)+'</div>'; return; }
+    var self={ ws:ws, closed:false }; NSUB=self;
+    ws.onopen=function(){ errEl.textContent=""; ws.send(JSON.stringify(["REQ","yap",{kinds:[42],"#t":[tag],limit:300}])); };
+    ws.onmessage=function(m){ var a; try{a=JSON.parse(m.data);}catch(e){return;}
+      if(a[0]==="EVENT"&&a[2]&&a[2].id&&!seen[a[2].id]){ seen[a[2].id]=1; NMSGS.push(evToMsg(a[2])); NMSGS.sort(byCreated); paint(NMSGS); }
+      else if(a[0]==="EOSE"&&a[1]==="yap"&&!NMSGS.length){ paint([]); }
+    };
+    ws.onerror=function(){ if(!NMSGS.length) errEl.textContent="Relay connection error."; };
+    ws.onclose=function(){ if(!self.closed && MODE==="nostr"){ errEl.textContent="Reconnecting to relay…"; setTimeout(function(){ if(!self.closed&&NSUB===self) connect(); },2500); } };
+  })();
+}
+
+function postNostr(text){
+  var ev=window.NT.finalizeEvent({ kind:42, created_at:Math.floor(Date.now()/1000),
+    tags:[["t",roomTag(TITLE)],["n",devLabel()],["client","yap"]], content:text }, window.NT.hexToBytes(devSk()));
+  if(NSUB && NSUB.ws && NSUB.ws.readyState===1){ NSUB.ws.send(JSON.stringify(["EVENT",ev])); return Promise.resolve(); }
+  return Promise.reject(new Error("not connected to relay"));
+}
+
+function openAny(spec){ spec=String(spec||"").trim(); if(/^nostr:/i.test(spec)){ openNostrRoom(spec.replace(/^nostr:/i,"")); } else { openRoom(spec); } }
+
+function devicePanel(){
+  if(!ntReady()){ window.addEventListener("nt-ready",devicePanel,{once:true}); return; }
+  var lbl=window.prompt("This device's nostr key:\n"+devNpub()+"\n\nDevice name (shown to your other devices):", devLabel());
+  if(lbl!==null){ var v=lbl.trim(); try{localStorage.setItem("yap:devlabel",v||devLabel());}catch(e){} }
+  var rl=window.prompt("Relay URL for nostr rooms:", RELAY);
+  if(rl!==null){ var r=rl.trim(); if(r){ RELAY=r; try{localStorage.setItem("yap:relay",r);}catch(e){} if(MODE==="nostr"&&TITLE) openNostrRoom(TITLE); } }
+}
+
 function openRoom(url){
+  closeRoom(); MODE="pod";
   ROOM=url; SIG=null; TITLE=""; titleEl.textContent=""; errEl.textContent="";
   try{ localStorage.setItem("yap:room",url); }catch(e){}
   wrap.innerHTML='<div class="center hint">Loading…</div>';
@@ -221,36 +289,43 @@ function openRoom(url){
 
 function askRoom(){
   var cur=ROOM||defaultRoom()||"";
-  var url=window.prompt("Room URL (a JSON-LD/RDF resource on a pod):", cur);
-  if(url&&url.trim()) openRoom(url.trim());
+  var url=window.prompt("Open a room:\n  • a pod URL (a JSON-LD/RDF resource), or\n  • nostr:<name> to chat across your devices via the relay", cur);
+  if(url&&url.trim()) openAny(url.trim());
 }
 
 function welcome(){
   composer.style.display="none"; titleEl.textContent=""; errEl.textContent="";
   wrap.innerHTML='<div class="center"><h2>yap</h2>'+
-    '<p class="hint">Minimal chat on your Solid pod. Sign in (login pill, bottom-right) to open your room and start yapping.</p>'+
-    '<p class="hint">Or <span class="lnk" id="open">open a room by URL</span>.</p></div>';
+    '<p class="hint">Minimal chat. Sign in (login pill, bottom-right) to open your <b>pod room</b>, '+
+    'or <span class="lnk" id="ndev">start a <b>nostr room</b></span> to chat across your own devices — no login needed.</p>'+
+    '<p class="hint"><span class="lnk" id="open">Open a room by URL</span> (a pod resource, or <code>nostr:&lt;name&gt;</code>).</p></div>';
   var o=document.getElementById("open"); if(o)o.onclick=askRoom;
+  var nd=document.getElementById("ndev"); if(nd)nd.onclick=function(){ var n=window.prompt("Nostr room name (shared across your devices):","devices"); if(n&&n.trim()) openNostrRoom(n.trim()); };
 }
 
 function start(){
   var qs=new URLSearchParams(location.search);
   var deep=qs.get("chat")||qs.get("url");
+  var saved=(function(){try{return localStorage.getItem("yap:room");}catch(e){return null;}})();
+  var want=deep||saved;
+  if(want && /^nostr:/i.test(want)){ openAny(want); return; }   // nostr rooms need no pod login
   if(!me()){
-    // allow read-only viewing of a shared/deep-linked room when signed out
+    // allow read-only viewing of a shared/deep-linked pod room when signed out
     if(deep){ openRoom(deep); } else { welcome(); }
     return;
   }
   loadMyName().then(function(){
-    var url=deep || (function(){try{return localStorage.getItem("yap:room");}catch(e){return null;}})() || defaultRoom();
-    if(url) openRoom(url); else welcome();
+    var url=want || defaultRoom();
+    if(url) openAny(url); else welcome();
   });
 }
 
 function submitMsg(){
-  var text=input.value.trim(); if(!text||!ROOM||!me())return;
+  var text=input.value.trim(); if(!text||!ROOM)return;
+  if(MODE!=="nostr" && !me())return;
   sendBtn.disabled=true; input.disabled=true;
-  post(text).then(function(){ input.value=""; refresh(); }).catch(function(e){
+  var p = (MODE==="nostr") ? postNostr(text) : post(text);
+  p.then(function(){ input.value=""; input.style.height="auto"; if(MODE!=="nostr")refresh(); }).catch(function(e){
     errEl.textContent="Couldn't send: "+(e&&e.message||e)+(/(^|\s)403/.test(String(e&&e.message))?" (no write access to this room)":"");
   }).then(function(){ sendBtn.disabled=false; input.disabled=false; input.focus(); });
 }
@@ -259,8 +334,9 @@ composer.addEventListener("submit",function(e){ e.preventDefault(); submitMsg();
 input.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submitMsg(); } });
 input.addEventListener("input",function(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,112)+"px"; });
 document.getElementById("switch").onclick=askRoom;
+document.getElementById("device").onclick=devicePanel;
 document.addEventListener("xlogin",start);
-document.addEventListener("xlogout",function(){ if(POLL)clearInterval(POLL); ROOM=null; MYNAME=null; welcome(); });
+document.addEventListener("xlogout",function(){ if(MODE==="nostr")return; closeRoom(); ROOM=null; MYNAME=null; welcome(); });
 start();
 </script>
 </body>
