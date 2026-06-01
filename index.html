@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 <style>
-  :root{ --p:#7c3aed; --p-d:#6d28d9; --line:#e6e3f0; --mut:#6b7280; --bg:#f5f3fb; }
+  :root{ --p:#7c3aed; --p-d:#6d28d9; --line:#e6e3f0; --mut:#6b7280; --bg:#f5f3fb; --ok:#059669; }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1f2230;background:var(--bg);display:flex;flex-direction:column;height:100dvh}
@@ -17,11 +17,42 @@
   .top .sp{margin-left:auto}
   .top button{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:.32rem .6rem;font:inherit;font-size:.82rem;cursor:pointer}
   .top button:hover{background:rgba(255,255,255,.28)}
+  .top button.on{background:#fff;color:var(--p-d)}
   .top a.root{color:rgba(255,255,255,.85);text-decoration:none;font-size:.82rem}
-  .wrap{flex:1 1 auto;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.5rem}
+  .back{display:none}
+
+  /* two-pane shell */
+  .app{flex:1 1 auto;display:flex;min-height:0}
+  .roster{flex:0 0 290px;border-right:1px solid var(--line);background:#fff;overflow-y:auto;display:flex;flex-direction:column}
+  .roster .rhead{display:flex;align-items:center;gap:.5rem;padding:.6rem .8rem;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:1}
+  .roster .rhead b{font-size:.82rem;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .roster .rhead button{margin-left:auto;background:var(--p);color:#fff;border:0;border-radius:8px;padding:.3rem .6rem;font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
+  .ri{display:flex;align-items:center;gap:.6rem;padding:.55rem .8rem;cursor:pointer;border-bottom:1px solid #f1eef9}
+  .ri:hover{background:var(--bg)}
+  .ri.sel{background:#ede9fe}
+  .ri .av{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--bg);border:1px solid var(--line);flex:0 0 auto}
+  .ri .rmain{flex:1;min-width:0}
+  .ri .rn{display:flex;align-items:center;gap:.35rem}
+  .ri .rn b{font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ri .rn .wv{font-size:.6rem;color:var(--ok)}
+  .ri .rp{font-size:.78rem;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ri .rt{font-size:.66rem;color:var(--mut);flex:0 0 auto;align-self:flex-start}
+  .ri .badge{background:var(--p);color:#fff;font-size:.66rem;font-weight:700;min-width:18px;text-align:center;border-radius:999px;padding:0 5px;align-self:center}
+  .rempty{padding:1.2rem .8rem;color:var(--mut);font-size:.85rem;text-align:center}
+
+  .pane{flex:1 1 auto;display:flex;flex-direction:column;min-width:0}
+  .pane .phead{display:flex;align-items:center;gap:.5rem;padding:.55rem .9rem;border-bottom:1px solid var(--line);background:#fff;flex:0 0 auto}
+  .pane .phead .pn{font-weight:700}
+  .pane .phead .pmeta{font-size:.74rem;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pane .phead .sp{margin-left:auto}
+  .pane .phead button{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.28rem .55rem;font:inherit;font-size:.76rem;cursor:pointer;color:#1f2230}
+  .pane .phead button.lan.on{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .pane .phead .live{font-size:.6rem;font-weight:700;color:var(--ok);animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .wrap{flex:1 1 auto;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.4rem}
   .center{margin:auto;max-width:30rem;text-align:center;color:var(--mut)}
   .center h2{color:#1f2230}
-  .msg{max-width:78%;padding:.45rem .7rem;border-radius:13px;background:#fff;border:1px solid var(--line);align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.03)}
+  .msg{max-width:72%;padding:.45rem .7rem;border-radius:13px;background:#fff;border:1px solid var(--line);align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .msg.mine{align-self:flex-end;background:#ede9fe;border-color:#ddd6fe}
   .msg .who{font-size:.72rem;font-weight:700;color:var(--p-d);margin-bottom:.05rem}
   .msg.mine .who{display:none}
@@ -34,55 +65,70 @@
   .composer button{background:var(--p);color:#fff;border:0;border-radius:10px;padding:0 1.05rem;font:inherit;font-weight:700;cursor:pointer}
   .composer button:hover{background:var(--p-d)}
   .composer button:disabled{opacity:.5;cursor:not-allowed}
-  .err{color:#c0392b;font-size:.82rem;padding:0 .6rem .4rem}
+  .err{color:#c0392b;font-size:.82rem;padding:0 .6rem .4rem;flex:0 0 auto}
   .hint{font-size:.8rem;color:var(--mut)}
-  input.room{width:100%;border:1px solid var(--line);border-radius:8px;padding:.5rem .6rem;font:inherit;margin:.5rem 0}
   .lnk{color:var(--p-d);cursor:pointer;text-decoration:underline}
+
+  /* mobile: one pane at a time */
+  @media (max-width:700px){
+    .roster{flex-basis:100%}
+    .app.thread-open .roster{display:none}
+    .app:not(.thread-open) .pane{display:none}
+    .back{display:inline-block}
+  }
 </style>
 </head>
 <body>
 <div class="top">
+  <button class="back" id="back" title="Back to chats">‹</button>
   <b>yap</b><span class="title" id="title"></span>
   <span class="sp"></span>
-  <button id="device" title="Your device key & relay">Device</button>
-  <button id="switch" title="Open another room">Room</button>
+  <button id="device" title="Your device key & relay (nostr rooms)">Device</button>
+  <button id="switch" title="Open a pod / nostr room">Room</button>
   <a class="root" href="../../../">&uarr; root</a>
 </div>
-<div class="wrap" id="wrap"></div>
-<div class="err" id="err"></div>
-<form class="composer" id="composer" style="display:none">
-  <textarea id="input" rows="1" placeholder="Message… (Enter to send)" autocomplete="off"></textarea>
-  <button type="submit" id="send">Send</button>
-</form>
+
+<div class="app" id="app">
+  <div class="roster" id="roster">
+    <div class="rhead"><b>Chats</b><button id="newdm" title="New DM">+ New</button></div>
+    <div id="rlist"><div class="rempty">Loading…</div></div>
+  </div>
+  <div class="pane" id="pane">
+    <div class="phead" id="phead" style="display:none"></div>
+    <div class="wrap" id="wrap"></div>
+    <div class="err" id="err"></div>
+    <form class="composer" id="composer" style="display:none">
+      <textarea id="input" rows="1" placeholder="Encrypted message… (Enter to send)" autocomplete="off"></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </div>
+</div>
 
 <script src="https://unpkg.com/xlogin"></script>
 <script type="module">
-  // nostr-tools (v2) — per-device keys + event signing for nostr rooms.
-  // Exposed on window.NT for the classic script below; fires "nt-ready" when loaded.
   import * as NT from "https://cdn.jsdelivr.net/npm/nostr-tools@2.10.4/+esm";
   window.NT = {
     generateSecretKey: NT.generateSecretKey, getPublicKey: NT.getPublicKey,
-    finalizeEvent: NT.finalizeEvent, verifyEvent: NT.verifyEvent, npubEncode: NT.nip19.npubEncode,
+    finalizeEvent: NT.finalizeEvent, verifyEvent: NT.verifyEvent,
+    npubEncode: NT.nip19.npubEncode, nip04: NT.nip04,
+    decodeNpub: function(s){ try{ var d=NT.nip19.decode(s); return d.type==="npub"?d.data:null; }catch(e){ return null; } },
     bytesToHex: function(u){ return Array.prototype.map.call(u,function(b){return ("0"+(b&255).toString(16)).slice(-2);}).join(""); },
     hexToBytes: function(h){ var b=new Uint8Array(h.length/2); for(var i=0;i<b.length;i++)b[i]=parseInt(h.slice(i*2,i*2+2),16); return b; }
   };
   window.dispatchEvent(new Event("nt-ready"));
 </script>
 <script>
-// yap - minimal chat. Two room types:
-//  - pod rooms: Solid Chat data model (meeting:LongChat + flow:Message) stored/read
-//    as JSON-LD via content negotiation; read + post + poll(4s).
-//  - nostr rooms: a shared channel on a relay (default wss://melvin.me/relay) keyed by
-//    a #t tag; each device has its own nostr key; live push, no pod/login needed.
 "use strict";
-var FLOW="http://www.w3.org/2005/01/wf/flow#", SIOC="http://rdfs.org/sioc/ns#",
-    DCT="http://purl.org/dc/terms/", FOAF="http://xmlns.com/foaf/0.1/",
-    MEET="http://www.w3.org/ns/pim/meeting#";
-var wrap=document.getElementById("wrap"), titleEl=document.getElementById("title"),
-    composer=document.getElementById("composer"), input=document.getElementById("input"),
-    sendBtn=document.getElementById("send"), errEl=document.getElementById("err");
-var ROOM=null, MYNAME=null, SIG=null, POLL=null, TITLE="", MODE="pod", NSUB=null, NMSGS=[];
-var RELAY=(function(){try{return localStorage.getItem("yap:relay");}catch(e){}return null;})()||"wss://melvin.me/relay";
+// yap — chat suite. This phase: a Telegram-style two-pane shell for 1:1
+// encrypted DMs (NIP-04, kind 4) keyed to your WebID identity. Pod rooms +
+// nostr group rooms (kind 42) are kept reachable via the Room button.
+var FOAF="http://xmlns.com/foaf/0.1/", FLOW="http://www.w3.org/2005/01/wf/flow#",
+    SIOC="http://rdfs.org/sioc/ns#", DCT="http://purl.org/dc/terms/", MEET="http://www.w3.org/ns/pim/meeting#";
+
+var appEl=document.getElementById("app"), rlist=document.getElementById("rlist"),
+    wrap=document.getElementById("wrap"), phead=document.getElementById("phead"),
+    titleEl=document.getElementById("title"), composer=document.getElementById("composer"),
+    input=document.getElementById("input"), sendBtn=document.getElementById("send"), errEl=document.getElementById("err");
 
 function me(){ return window.xlogin && window.xlogin.id; }
 function authFetch(u,o){ return ((window.xlogin && window.xlogin.authFetch)||fetch)(u,o); }
@@ -90,254 +136,250 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){retur
 function arr(v){ return Array.isArray(v)?v:(v==null?[]:[v]); }
 function lit(v){ if(v==null)return null; if(typeof v!=="object")return v; if(Array.isArray(v))return v.length?lit(v[0]):null; return v["@value"]!=null?v["@value"]:(v["@id"]!=null?v["@id"]:null); }
 function idOf(v){ if(v==null)return null; if(typeof v==="string")return v; if(Array.isArray(v))return v.length?idOf(v[0]):null; return v["@id"]||null; }
-function nodes(doc){ var acc=[]; collectNodes(doc,acc); return acc; }   // any JSON-LD shape: top-level, @graph, or embedded nodes
-function collectNodes(x,acc){
-  if(Array.isArray(x)){ for(var i=0;i<x.length;i++)collectNodes(x[i],acc); return; }
-  if(x&&typeof x==="object"){
-    if(x["@value"]!==undefined) return;            // literal value object, not a node
-    acc.push(x);
-    for(var k in x){ if(k==="@context"||k==="@id"||k==="@type"||k==="@value")continue; collectNodes(x[k],acc); }
-  }
-}
-function pget(node,full,compact){ var v=node[full]; if(v===undefined)v=node[compact]; return v; }
-function typeIs(node,suffix){ var t=node["@type"]||node["a"]; return arr(t).some(function(x){ x=idOf(x)||x; return typeof x==="string" && new RegExp("[#/:]"+suffix+"$").test(x); }); }
-function shortId(uri){ if(!uri)return "someone"; try{ return new URL(uri).hostname; }catch(e){} return String(uri).replace(/^.*[:#/]/,"").slice(0,16)||"someone"; }
+function isHex64(s){ return /^[0-9a-f]{64}$/i.test(s||""); }
+function rel(p){ return new URL(p, location.href).href; }
+function shortId(uri){ if(!uri)return "someone"; return String(uri).replace(/^.*[:#/]/,"").slice(0,12)||"someone"; }
+function fmtTime(ts){ if(!ts)return ""; var d=new Date(ts*1000); if(isNaN(d))return ""; var now=new Date(); var same=d.toDateString()===now.toDateString(); return same?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([],{month:"short",day:"numeric"}); }
+function linkify(s){ return esc(s).replace(/(https?:\/\/[^\s<]+)/g,function(u){return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>';}); }
+function ntReady(){ return !!(window.NT && window.NT.nip04); }
 
-// --- parse a LongChat doc (any JSON-LD shape) into a sorted message list ---
-function parseRoom(doc){
-  var ns=nodes(doc), names={}, msgs=[], title=null;
-  ns.forEach(function(n){
-    var id=idOf(n["@id"]||n);
-    var nm=lit(pget(n,FOAF+"name","foaf:name")); if(id&&nm)names[id]=nm;
-    if(typeIs(n,"LongChat")){ var t=lit(pget(n,DCT+"title","dct:title")); if(t)title=t; }
+// ---- identity (the shared nostr keystore — "one key, every app") ----
+var KEYSTORE=rel("../../../private/nostr/keys.jsonld"),
+    READDOC=rel("../../../private/yap/read.jsonld"), READDIR=rel("../../../private/yap/"),
+    CARD=rel("../../../profile/card.jsonld");
+var KEYS=[], DMRELAYS=[], READ={}, PROFILES={}, WEBIDS={};
+var MB="fe70102";
+function hexFromMb(mb){ return (typeof mb==="string"&&mb.indexOf(MB)===0&&mb.length===MB.length+64)?mb.slice(MB.length).toLowerCase():null; }
+
+function loadKeystore(){
+  return authFetch(KEYSTORE,{headers:{Accept:"application/ld+json"}}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    KEYS=(d&&d.keys)||[]; DMRELAYS=(d&&d.relays)||[];
+    if(!DMRELAYS.length) DMRELAYS=["wss://nos.lol","wss://relay.damus.io"];
+  }).catch(function(){ KEYS=[]; DMRELAYS=["wss://nos.lol","wss://relay.damus.io"]; });
+}
+function myHex(){ var x=window.xlogin; if(x&&x.type==="nostr"&&isHex64(x.id))return String(x.id).toLowerCase(); var k=KEYS.filter(function(k){return k.primary;})[0]||KEYS[0]; return k?k.pubkey:null; }
+function mySecret(){ var h=myHex(); var k=KEYS.filter(function(k){return k.pubkey===h&&k.secret;})[0]; return k?k.secret:null; }
+function myRelayUrl(){ return (location.protocol==="https:"?"wss://":"ws://")+location.host+"/relay"; }
+
+function loadRead(){ return authFetch(READDOC,{headers:{Accept:"application/json"}}).then(function(r){return r.ok?r.json():null;}).then(function(d){ READ=(d&&d.read)||{}; }).catch(function(){ READ={}; }); }
+function saveRead(){
+  var doc={read:READ};
+  var put=function(){ return authFetch(READDOC,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(doc)}); };
+  return put().then(function(r){ if(!r.ok&&(r.status===404||r.status===409)){ return authFetch(READDIR,{method:"PUT",headers:{"Content-Type":"text/turtle"},body:""}).then(put); } return r; }).catch(function(){});
+}
+
+// ---- relay primitives (raw WS, multi-relay) ----
+function subMany(relays, filters, onEvent){
+  var subid="y"+Math.random().toString(36).slice(2,8); var sockets=[];
+  relays.forEach(function(url){
+    var ws; try{ws=new WebSocket(url);}catch(e){return;}
+    ws.onopen=function(){ filters.forEach(function(f,i){ try{ws.send(JSON.stringify(["REQ",subid+i,f]));}catch(e){} }); };
+    ws.onmessage=function(m){ var a; try{a=JSON.parse(m.data);}catch(e){return;} if(a[0]==="EVENT"&&String(a[1]).indexOf(subid)===0&&a[2]) onEvent(a[2]); };
+    sockets.push(ws);
   });
-  ns.forEach(function(n){
-    if(!typeIs(n,"Message")) return;
-    var mk=pget(n,FOAF+"maker","foaf:maker");
-    var maker=idOf(mk);
-    var inlineName=null; if(mk&&typeof mk==="object"&&!Array.isArray(mk)) inlineName=lit(pget(mk,FOAF+"name","foaf:name"));
-    if(mk&&Array.isArray(mk)&&mk[0]&&typeof mk[0]==="object") inlineName=lit(pget(mk[0],FOAF+"name","foaf:name"));
-    msgs.push({
-      id: idOf(n["@id"]||n),
-      content: lit(pget(n,SIOC+"content","sioc:content")),
-      created: lit(pget(n,DCT+"created","dct:created")),
-      maker: maker,
-      name: inlineName || (maker&&names[maker]) || shortId(maker)
+  return function(){ sockets.forEach(function(ws){ try{ws.close();}catch(e){} }); };
+}
+function fetchMany(relays, filters, capMs){
+  return new Promise(function(resolve){
+    var out=[], seen={}; var stop=subMany(relays, filters, function(ev){ if(ev.id&&!seen[ev.id]){seen[ev.id]=1; out.push(ev);} });
+    setTimeout(function(){ stop(); resolve(out); }, capMs||3500);
+  });
+}
+function publishMany(relays, evt){
+  return Promise.all(relays.map(function(url){ return new Promise(function(res){ var ws,done=false; var fin=function(ok){if(done)return;done=true;clearTimeout(t);try{ws.close();}catch(e){} res(ok);};
+    try{ws=new WebSocket(url);}catch(e){return res(false);} var t=setTimeout(function(){fin(false);},5000);
+    ws.onopen=function(){ try{ws.send(JSON.stringify(["EVENT",evt]));}catch(e){fin(false);} };
+    ws.onmessage=function(m){ try{var a=JSON.parse(m.data); if(a[0]==="OK"&&a[1]===evt.id) fin(a[2]===true);}catch(e){} };
+    ws.onerror=function(){ fin(false); };
+  }); }));
+}
+
+// ---- DM crypto (nostr-tools nip04) ----
+function decrypt(skHex, pkHex, payload){ return Promise.resolve(window.NT.nip04.decrypt(window.NT.hexToBytes(skHex), pkHex, payload)); }
+function encrypt(skHex, pkHex, text){ return Promise.resolve(window.NT.nip04.encrypt(window.NT.hexToBytes(skHex), pkHex, text)); }
+function partnerOf(ev, h){ if(ev.pubkey!==h) return ev.pubkey; var p=(ev.tags||[]).filter(function(t){return t[0]==="p";})[0]; return p?p[1]:null; }
+
+// ---- profiles + WebID verification ----
+function fetchProfiles(pubs){ if(!pubs.length)return Promise.resolve({});
+  return fetchMany(DMRELAYS,[{kinds:[0],authors:pubs,limit:pubs.length*2}],3500).then(function(evs){
+    var map={}; evs.forEach(function(e){ if(!map[e.pubkey]||e.created_at>map[e.pubkey]._ct){ try{var c=JSON.parse(e.content);c._ct=e.created_at;map[e.pubkey]=c;}catch(_){} } }); return map;
+  });
+}
+function loadFollows(){ var h=myHex(); if(!h)return Promise.resolve([]);
+  return fetchMany(DMRELAYS,[{kinds:[3],authors:[h],limit:1}],3500).then(function(evs){
+    evs.sort(function(a,b){return b.created_at-a.created_at;}); var l=evs[0];
+    return l?(l.tags||[]).filter(function(t){return t[0]==="p"&&isHex64(t[1]);}).map(function(t){return t[1];}):[];
+  });
+}
+
+// ---- roster ----
+var ROSTER=[], CURRENT=null, GLOBAL=null;
+function buildRoster(){
+  var h=myHex(); if(!h){ rlist.innerHTML='<div class="rempty">No usable Nostr key. Import your nsec in the <b>nostr</b> app.</div>'; return Promise.resolve(); }
+  rlist.innerHTML='<div class="rempty">Loading chats…</div>';
+  return Promise.all([loadFollows(), fetchMany(DMRELAYS,[{kinds:[4],authors:[h],limit:200},{kinds:[4],"#p":[h],limit:200}],3500)]).then(function(res){
+    var follows=res[0], hist=res[1];
+    var p={}; // pubkey -> { lastTime, lastEv, unread }
+    follows.forEach(function(k){ if(k&&k!==h&&!p[k]) p[k]={lastTime:0,lastEv:null,unread:0}; });
+    hist.forEach(function(ev){ var c=partnerOf(ev,h); if(!c||c===h)return; if(!p[c])p[c]={lastTime:0,lastEv:null,unread:0};
+      if(ev.created_at>p[c].lastTime){ p[c].lastTime=ev.created_at; p[c].lastEv=ev; }
+      if(ev.pubkey===c && ev.created_at>(READ[c]||0)) p[c].unread++;
+    });
+    var pubs=Object.keys(p);
+    return fetchProfiles(pubs).then(function(profs){ PROFILES=profs;
+      ROSTER=pubs.map(function(k){ var m=profs[k]||{}; return { pubkey:k, name:m.name||m.display_name||null, picture:m.picture||null, lastTime:p[k].lastTime, lastEv:p[k].lastEv, unread:p[k].unread, preview:"" }; });
+      // decrypt previews (best-effort)
+      var sk=mySecret();
+      return Promise.all(ROSTER.map(function(r){ if(!r.lastEv||!sk)return Promise.resolve(); return decrypt(sk,r.pubkey,r.lastEv.content).then(function(t){ r.preview=(r.lastEv.pubkey===h?"You: ":"")+t; }).catch(function(){ r.preview="🔒"; }); })).then(renderRoster);
     });
   });
-  msgs.sort(function(a,b){ return (a.created||"")<(b.created||"")?-1:(a.created||"")>(b.created||"")?1:(a.id<b.id?-1:1); });
-  return { title:title, messages:msgs };
 }
-
-// --- build the compact JSON-LD doc we PUT back ---
-function buildDoc(title,msgs){
-  return {
-    "@context":{ flow:FLOW, sioc:SIOC, dct:DCT, foaf:FOAF, meeting:MEET, xsd:"http://www.w3.org/2001/XMLSchema#" },
-    "@id":"#this", "@type":"meeting:LongChat",
-    "dct:title": title||"yap",
-    "flow:message": msgs.map(function(m){
-      var mk={"@id":m.maker}; if(m.name)mk["foaf:name"]=m.name;
-      return { "@id":m.id, "@type":"flow:Message", "sioc:content":m.content,
-        "dct:created":{"@value":m.created,"@type":"xsd:dateTime"}, "foaf:maker":mk };
-    })
-  };
-}
-
-function loadRoom(url){
-  return authFetch(url,{headers:{Accept:"application/ld+json"}}).then(function(r){
-    if(r.status===404) return { missing:true };
-    if(!r.ok) return { error:"HTTP "+r.status };
-    return r.json().then(function(j){ return parseRoom(j); }).catch(function(){ return { error:"bad JSON-LD" }; });
-  }).catch(function(){ return { error:"network" }; });
-}
-
-function putDoc(url,doc){
-  return authFetch(url,{ method:"PUT", headers:{"Content-Type":"application/ld+json"}, body:JSON.stringify(doc) })
-    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return true; });
-}
-
-// post = load latest, append, PUT (v1: yap owns the doc; races accepted)
-function post(text){
-  var now=new Date().toISOString();
-  var msg={ id:"#msg-"+Date.now()+"-"+Math.random().toString(36).slice(2,8),
-            content:text, created:now, maker:me(), name:MYNAME };
-  return loadRoom(ROOM).then(function(room){
-    var existing=(room&&room.messages)||[];
-    var title=(room&&room.title)||TITLE||"yap";
-    return putDoc(ROOM, buildDoc(title, existing.concat([msg])));
-  });
-}
-
-function ensureRoom(url){
-  return loadRoom(url).then(function(room){
-    if(room&&room.missing){ return putDoc(url, buildDoc("yap", [])).then(function(){ return { title:"yap", messages:[] }; }); }
-    return room;
-  });
-}
-
-// --- profile name (Solid) / short id (nostr) ---
-function loadMyName(){
-  var x=window.xlogin; if(!x||!x.id){ MYNAME=null; return Promise.resolve(); }
-  if(x.type==="nostr"){ MYNAME="nostr:"+String(x.id).replace(/^.*[:#/]/,"").slice(0,10); return Promise.resolve(); }
-  return authFetch(String(x.id).replace(/#.*$/,""),{headers:{Accept:"application/ld+json"}})
-    .then(function(r){return r.ok?r.json():null;})
-    .then(function(j){ var who=String(x.id); nodes(j).forEach(function(n){ if((idOf(n["@id"])||"")===who){ var nm=lit(pget(n,FOAF+"name","foaf:name")); if(nm)MYNAME=nm; } }); if(!MYNAME)MYNAME=shortId(who); })
-    .catch(function(){ MYNAME=shortId(String(x.id)); });
-}
-
-function podRoot(){ var x=window.xlogin; if(!x||!x.id)return null; return String(x.id).replace(/#.*$/,"").replace(/\/profile\/card$|\/[^\/]*$/,""); }
-function defaultRoom(){ var r=podRoot(); return r?r+"/public/yap.jsonld":null; }
-
-// --- rendering ---
-function fmtTime(iso){ if(!iso)return ""; var d=new Date(iso); if(isNaN(d))return ""; var today=new Date(); var sameDay=d.toDateString()===today.toDateString(); return sameDay?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
-function linkify(s){ return esc(s).replace(/(https?:\/\/[^\s<]+)/g,function(u){return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>';}); }
-
-function paint(msgs){
-  var nearBottom = wrap.scrollHeight-wrap.scrollTop-wrap.clientHeight < 80;
-  var mineKey = (MODE==="nostr") ? (window.NT?devPk():null) : me();
-  if(!msgs.length){ wrap.innerHTML='<div class="center hint">No messages yet — say something.</div>'; return; }
-  wrap.innerHTML=msgs.map(function(m){
-    var isMine = !!mineKey && ((MODE==="nostr"? m.pk : m.maker)===mineKey);
-    return '<div class="msg'+(isMine?" mine":"")+'">'+
-      '<div class="who">'+esc(m.name||shortId(m.maker))+'</div>'+
-      '<div class="txt">'+linkify(m.content||"")+'</div>'+
-      '<div class="t">'+esc(fmtTime(m.created))+'</div></div>';
+function rosterSorted(){ return ROSTER.slice().sort(function(a,b){ return (b.lastTime||0)-(a.lastTime||0) || (a.name||a.pubkey).localeCompare(b.name||b.pubkey); }); }
+function renderRoster(){
+  var items=rosterSorted();
+  if(!items.length){ rlist.innerHTML='<div class="rempty">No chats yet. Follow people in the <b>nostr</b> app, or hit <b>+ New</b>.</div>'; return; }
+  rlist.innerHTML=items.map(function(r){
+    var name=esc(r.name||("@"+r.pubkey.slice(0,10)));
+    return '<div class="ri'+(r.pubkey===CURRENT?" sel":"")+'" data-pk="'+esc(r.pubkey)+'">'+
+      (r.picture?'<img class="av" src="'+esc(r.picture)+'" alt="">':'<div class="av"></div>')+
+      '<div class="rmain"><div class="rn"><b>'+name+'</b></div>'+
+      '<div class="rp">'+esc(r.preview||"")+'</div></div>'+
+      (r.lastTime?'<div class="rt">'+esc(fmtTime(r.lastTime))+'</div>':'')+
+      (r.unread?'<div class="badge">'+r.unread+'</div>':'')+'</div>';
   }).join("");
-  if(nearBottom) wrap.scrollTop=wrap.scrollHeight;
+  Array.prototype.forEach.call(rlist.querySelectorAll(".ri"),function(el){ el.onclick=function(){ openThread(el.getAttribute("data-pk")); }; });
 }
 
-function signature(msgs){ return msgs.length+"|"+(msgs.length?msgs[msgs.length-1].id+"|"+msgs[msgs.length-1].created:""); }
-
-function refresh(){
-  if(!ROOM) return;
-  loadRoom(ROOM).then(function(room){
-    if(room&&room.error){ if(!SIG)errEl.textContent="Couldn't load room: "+room.error; return; }
-    if(room&&room.missing){ errEl.textContent="Room not found (open it on a pod you can write to)."; return; }
-    errEl.textContent="";
-    if(room.title){ TITLE=room.title; titleEl.textContent="· "+room.title; }
-    var sig=signature(room.messages);
-    if(sig!==SIG){ SIG=sig; paint(room.messages); }
-  });
+// ---- a thread ----
+var THREAD=null; // { pubkey, seen, latest, stop, lanOnly }
+function relaysFor(pk, lanOnly){
+  if(lanOnly){ var lan=[myRelayUrl()]; var r=ROSTER.filter(function(x){return x.pubkey===pk;})[0]; var hint=lanHint(pk); if(hint)lan.push(hint); return lan.filter(Boolean); }
+  return DMRELAYS;
 }
+function lanHint(pk){ /* a contact's relay, if we know one from the keystore relays that's ws:// LAN */ return null; }
 
-// --- nostr rooms: per-device key (separate from xlogin; works without a pod) ---
-function ntReady(){ return !!window.NT; }
-function devSk(){ var h; try{h=localStorage.getItem("yap:sk");}catch(e){} if(!h){ h=window.NT.bytesToHex(window.NT.generateSecretKey()); try{localStorage.setItem("yap:sk",h);}catch(e){} } return h; }
-function devPk(){ return window.NT.getPublicKey(window.NT.hexToBytes(devSk())); }
-function devLabel(){ var l; try{l=localStorage.getItem("yap:devlabel");}catch(e){} return l||("device-"+devPk().slice(0,4)); }
-function devNpub(){ try{return window.NT.npubEncode(devPk());}catch(e){return "";} }
-function roomTag(name){ return "yap:"+name; }
-function byCreated(a,b){ return (a.created||"")<(b.created||"")?-1:(a.created||"")>(b.created||"")?1:(a.id<b.id?-1:1); }
-function evToMsg(ev){ var nm=null; (ev.tags||[]).forEach(function(t){ if(t[0]==="n")nm=t[1]; });
-  return { id:ev.id, content:ev.content, created:new Date((ev.created_at||0)*1000).toISOString(),
-    maker:"nostr:"+ev.pubkey, pk:ev.pubkey, name:nm||("@"+String(ev.pubkey).slice(0,8)) }; }
-
-function closeRoom(){ if(POLL){clearInterval(POLL);POLL=null;} if(NSUB){ NSUB.closed=true; try{NSUB.ws.close();}catch(e){} NSUB=null; } }
-
-function openNostrRoom(name){
-  if(!ntReady()){ wrap.innerHTML='<div class="center hint">Loading nostr…</div>'; window.addEventListener("nt-ready",function(){ openNostrRoom(name); },{once:true}); return; }
-  closeRoom(); MODE="nostr"; ROOM="nostr:"+name; TITLE=name; titleEl.textContent="· "+name+" · nostr"; errEl.textContent="";
-  try{localStorage.setItem("yap:room",ROOM);}catch(e){}
-  composer.style.display="flex";
-  NMSGS=[]; var seen={}, tag=roomTag(name);
-  wrap.innerHTML='<div class="center hint">Connecting to '+esc(RELAY)+'…</div>';
-  (function connect(){
-    var ws; try{ ws=new WebSocket(RELAY); }catch(e){ wrap.innerHTML='<div class="center">Bad relay URL: '+esc(RELAY)+'</div>'; return; }
-    var self={ ws:ws, closed:false }; NSUB=self;
-    ws.onopen=function(){ errEl.textContent=""; ws.send(JSON.stringify(["REQ","yap",{kinds:[42],"#t":[tag],limit:300}])); };
-    ws.onmessage=function(m){ var a; try{a=JSON.parse(m.data);}catch(e){return;}
-      if(a[0]==="EVENT"&&a[2]&&a[2].id&&!seen[a[2].id]){ seen[a[2].id]=1; NMSGS.push(evToMsg(a[2])); NMSGS.sort(byCreated); paint(NMSGS); }
-      else if(a[0]==="EOSE"&&a[1]==="yap"&&!NMSGS.length){ paint([]); }
-    };
-    ws.onerror=function(){ if(!NMSGS.length) errEl.textContent="Relay connection error."; };
-    ws.onclose=function(){ if(!self.closed && MODE==="nostr"){ errEl.textContent="Reconnecting to relay…"; setTimeout(function(){ if(!self.closed&&NSUB===self) connect(); },2500); } };
-  })();
+function bubble(ev, text, mine){ var d=document.createElement("div"); d.className="msg"+(mine?" mine":""); d.innerHTML='<div class="txt">'+linkify(text)+'</div><div class="t">'+esc(fmtTime(ev.created_at))+'</div>'; wrap.appendChild(d); var near=wrap.scrollHeight-wrap.scrollTop-wrap.clientHeight<120; if(near||mine)wrap.scrollTop=wrap.scrollHeight; }
+function addToThread(ev){ var t=THREAD; if(!t)return; var h=myHex(); if(partnerOf(ev,h)!==t.pubkey)return; if(t.seen[ev.id])return; t.seen[ev.id]=1; if(ev.created_at>t.latest)t.latest=ev.created_at;
+  decrypt(mySecret(), t.pubkey, ev.content).then(function(text){ if(THREAD===t) bubble(ev, text, ev.pubkey===h); }).catch(function(){ if(THREAD===t) bubble(ev,"🔒 (undecryptable)", ev.pubkey===h); });
+  markRead(t.pubkey, ev.created_at);
 }
+function markRead(pk, ts){ if(ts>(READ[pk]||0)){ READ[pk]=ts; saveRead(); var r=ROSTER.filter(function(x){return x.pubkey===pk;})[0]; if(r&&r.unread){ r.unread=0; renderRoster(); } } }
 
-function postNostr(text){
-  var ev=window.NT.finalizeEvent({ kind:42, created_at:Math.floor(Date.now()/1000),
-    tags:[["t",roomTag(TITLE)],["n",devLabel()],["client","yap"]], content:text }, window.NT.hexToBytes(devSk()));
-  if(NSUB && NSUB.ws && NSUB.ws.readyState===1){ NSUB.ws.send(JSON.stringify(["EVENT",ev])); return Promise.resolve(); }
-  return Promise.reject(new Error("not connected to relay"));
-}
-
-function openAny(spec){ spec=String(spec||"").trim(); if(/^nostr:/i.test(spec)){ openNostrRoom(spec.replace(/^nostr:/i,"")); } else { openRoom(spec); } }
-
-function devicePanel(){
-  if(!ntReady()){ window.addEventListener("nt-ready",devicePanel,{once:true}); return; }
-  var lbl=window.prompt("This device's nostr key:\n"+devNpub()+"\n\nDevice name (shown to your other devices):", devLabel());
-  if(lbl!==null){ var v=lbl.trim(); try{localStorage.setItem("yap:devlabel",v||devLabel());}catch(e){} }
-  var rl=window.prompt("Relay URL for nostr rooms:", RELAY);
-  if(rl!==null){ var r=rl.trim(); if(r){ RELAY=r; try{localStorage.setItem("yap:relay",r);}catch(e){} if(MODE==="nostr"&&TITLE) openNostrRoom(TITLE); } }
-}
-
-function openRoom(url){
-  closeRoom(); MODE="pod";
-  ROOM=url; SIG=null; TITLE=""; titleEl.textContent=""; errEl.textContent="";
-  try{ localStorage.setItem("yap:room",url); }catch(e){}
+function openThread(pk){
+  if(THREAD&&THREAD.stop)THREAD.stop();
+  CURRENT=pk; appEl.classList.add("thread-open");
+  var r=ROSTER.filter(function(x){return x.pubkey===pk;})[0]||{pubkey:pk};
+  var name=r.name||("@"+pk.slice(0,10));
+  THREAD={ pubkey:pk, seen:{}, latest:0, stop:null, lanOnly:false };
+  phead.style.display="flex";
+  phead.innerHTML='<div><div class="pn">'+esc(name)+'</div><div class="pmeta">'+esc(pk.slice(0,16))+'… · NIP-04</div></div>'+
+    '<span class="sp"></span><span class="live">● live</span>'+
+    '<button class="lan" id="lanbtn" title="Route this chat over your LAN relay only">🌐 all</button>';
+  composer.style.display="flex"; errEl.textContent="";
   wrap.innerHTML='<div class="center hint">Loading…</div>';
-  composer.style.display = me()?"flex":"none";
-  var p = me() ? ensureRoom(url) : loadRoom(url);
-  p.then(function(room){
-    if(room&&room.error){ wrap.innerHTML='<div class="center">Couldn\'t open this room ('+esc(room.error)+').</div>'; return; }
-    if(room&&room.missing){ wrap.innerHTML='<div class="center">This room doesn\'t exist yet. Sign in to a pod you can write to, or open one of your own.</div>'; return; }
-    if(room.title){ TITLE=room.title; titleEl.textContent="· "+room.title; }
-    SIG=signature(room.messages); paint(room.messages);
-    if(POLL)clearInterval(POLL); POLL=setInterval(refresh,4000);
+  renderRoster();
+  document.getElementById("lanbtn").onclick=toggleLan;
+  input.focus();
+  loadThread();
+}
+function loadThread(){
+  var t=THREAD, h=myHex(); if(!t)return;
+  if(t.stop){t.stop();t.stop=null;}
+  t.seen={}; t.latest=0;
+  var relays=relaysFor(t.pubkey, t.lanOnly);
+  fetchMany(relays,[{kinds:[4],authors:[t.pubkey],"#p":[h],limit:200},{kinds:[4],authors:[h],"#p":[t.pubkey],limit:200}],3500).then(function(evs){
+    if(THREAD!==t)return;
+    evs.sort(function(a,b){return a.created_at-b.created_at;});
+    wrap.innerHTML=""; if(!evs.length)wrap.innerHTML='<div class="center hint">No messages yet — say hi 👋</div>';
+    var sk=mySecret();
+    var chain=Promise.resolve();
+    evs.forEach(function(ev){ if(t.seen[ev.id])return; t.seen[ev.id]=1; if(ev.created_at>t.latest)t.latest=ev.created_at;
+      chain=chain.then(function(){ return decrypt(sk,t.pubkey,ev.content).then(function(text){ if(wrap.querySelector(".center"))wrap.innerHTML=""; bubble(ev,text,ev.pubkey===h); }).catch(function(){ bubble(ev,"🔒",ev.pubkey===h); }); });
+    });
+    chain.then(function(){ if(t.latest)markRead(t.pubkey,t.latest); });
+    // live subscription for this pair
+    t.stop=subMany(relays,[{kinds:[4],authors:[t.pubkey],"#p":[h],since:(t.latest||Math.floor(Date.now()/1000))-1},{kinds:[4],authors:[h],"#p":[t.pubkey],since:(t.latest||Math.floor(Date.now()/1000))-1}], addToThread);
+  });
+}
+function toggleLan(){ var t=THREAD; if(!t)return; t.lanOnly=!t.lanOnly; var b=document.getElementById("lanbtn"); b.textContent=t.lanOnly?"🔒 LAN":"🌐 all"; b.className="lan"+(t.lanOnly?" on":""); b.title=t.lanOnly?("LAN only — "+relaysFor(t.pubkey,true).join(", ")):"Route this chat over your LAN relay only"; loadThread(); }
+
+function sendDM(text){
+  var t=THREAD, h=myHex(), sk=mySecret(); if(!t||!sk)return Promise.reject(new Error("no key/thread"));
+  return encrypt(sk,t.pubkey,text).then(function(cipher){
+    var evt=window.NT.finalizeEvent({kind:4,created_at:Math.floor(Date.now()/1000),tags:[["p",t.pubkey]],content:cipher}, window.NT.hexToBytes(sk));
+    addToThread(evt); // optimistic; relay echo deduped by id
+    // bump roster preview
+    var r=ROSTER.filter(function(x){return x.pubkey===t.pubkey;})[0]; if(r){ r.lastTime=evt.created_at; r.preview="You: "+text; renderRoster(); }
+    return publishMany(relaysFor(t.pubkey,t.lanOnly), evt).then(function(rs){ if(!rs.filter(function(x){return x;}).length) errEl.textContent="No relay accepted the message."; });
   });
 }
 
-function askRoom(){
-  var cur=ROOM||defaultRoom()||"";
-  var url=window.prompt("Open a room:\n  • a pod URL (a JSON-LD/RDF resource), or\n  • nostr:<name> to chat across your devices via the relay", cur);
-  if(url&&url.trim()) openAny(url.trim());
-}
-
-function welcome(){
-  composer.style.display="none"; titleEl.textContent=""; errEl.textContent="";
-  wrap.innerHTML='<div class="center"><h2>yap</h2>'+
-    '<p class="hint">Minimal chat. Sign in (login pill, bottom-right) to open your <b>pod room</b>, '+
-    'or <span class="lnk" id="ndev">start a <b>nostr room</b></span> to chat across your own devices — no login needed.</p>'+
-    '<p class="hint"><span class="lnk" id="open">Open a room by URL</span> (a pod resource, or <code>nostr:&lt;name&gt;</code>).</p></div>';
-  var o=document.getElementById("open"); if(o)o.onclick=askRoom;
-  var nd=document.getElementById("ndev"); if(nd)nd.onclick=function(){ var n=window.prompt("Nostr room name (shared across your devices):","devices"); if(n&&n.trim()) openNostrRoom(n.trim()); };
-}
-
-function start(){
-  var qs=new URLSearchParams(location.search);
-  var deep=qs.get("chat")||qs.get("url");
-  var saved=(function(){try{return localStorage.getItem("yap:room");}catch(e){return null;}})();
-  var want=deep||saved;
-  if(want && /^nostr:/i.test(want)){ openAny(want); return; }   // nostr rooms need no pod login
-  if(!me()){
-    // allow read-only viewing of a shared/deep-linked pod room when signed out
-    if(deep){ openRoom(deep); } else { welcome(); }
-    return;
-  }
-  loadMyName().then(function(){
-    var url=want || defaultRoom();
-    if(url) openAny(url); else welcome();
+// global incoming subscription → roster bumps + open-thread delivery
+function startGlobal(){
+  if(GLOBAL)GLOBAL();
+  var h=myHex(); if(!h)return;
+  GLOBAL=subMany(DMRELAYS,[{kinds:[4],"#p":[h],since:Math.floor(Date.now()/1000)-1}], function(ev){
+    var c=partnerOf(ev,h); if(!c)return;
+    if(THREAD&&THREAD.pubkey===c){ addToThread(ev); }
+    else { // update roster
+      var r=ROSTER.filter(function(x){return x.pubkey===c;})[0];
+      var apply=function(){ r.lastTime=ev.created_at; r.unread=(r.unread||0)+1; decrypt(mySecret(),c,ev.content).then(function(tx){ r.preview=tx; renderRoster(); }).catch(renderRoster); };
+      if(r){ apply(); }
+      else { // brand-new partner — fetch their profile then add
+        fetchProfiles([c]).then(function(pr){ var m=pr[c]||{}; r={pubkey:c,name:m.name||m.display_name||null,picture:m.picture||null,lastTime:ev.created_at,unread:1,preview:""}; ROSTER.push(r); decrypt(mySecret(),c,ev.content).then(function(tx){r.preview=tx;renderRoster();}).catch(renderRoster); });
+      }
+    }
   });
 }
 
+// ---- new DM ----
+function startNewDM(){
+  var raw=window.prompt("Start a DM — paste an npub, 64-hex pubkey, or a WebID / pod URL:"); if(!raw)return;
+  raw=raw.trim();
+  resolveTarget(raw).then(function(pk){ if(!pk){ errEl.textContent="Couldn't resolve that to a Nostr key."; return; }
+    if(!ROSTER.filter(function(x){return x.pubkey===pk;}).length){ fetchProfiles([pk]).then(function(pr){ var m=pr[pk]||{}; ROSTER.push({pubkey:pk,name:m.name||m.display_name||null,picture:m.picture||null,lastTime:0,unread:0,preview:""}); renderRoster(); openThread(pk); }); }
+    else openThread(pk);
+  }).catch(function(e){ errEl.textContent="Couldn't resolve: "+(e&&e.message||e); });
+}
+function resolveTarget(raw){
+  if(isHex64(raw)) return Promise.resolve(raw.toLowerCase());
+  if(/^npub1/i.test(raw)){ return Promise.resolve(window.NT.decodeNpub(raw)); }
+  if(/^https?:\/\//.test(raw)){ var base=raw.charAt(raw.length-1)==="/"?raw:raw+"/"; var card=raw.indexOf("card.jsonld")>=0?raw:new URL("profile/card.jsonld",base).href;
+    return authFetch(card,{headers:{Accept:"application/ld+json"}}).then(function(r){return r.ok?r.json():null;}).then(function(doc){ if(!doc)return null; var vms=arr(doc.verificationMethod); for(var i=0;i<vms.length;i++){ var hex=hexFromMb(vms[i]&&vms[i].publicKeyMultibase); if(hex)return hex; } return null; }); }
+  return Promise.resolve(null);
+}
+
+// ---- compose handling ----
 function submitMsg(){
-  var text=input.value.trim(); if(!text||!ROOM)return;
-  if(MODE!=="nostr" && !me())return;
-  sendBtn.disabled=true; input.disabled=true;
-  var p = (MODE==="nostr") ? postNostr(text) : post(text);
-  p.then(function(){ input.value=""; input.style.height="auto"; if(MODE!=="nostr")refresh(); }).catch(function(e){
-    errEl.textContent="Couldn't send: "+(e&&e.message||e)+(/(^|\s)403/.test(String(e&&e.message))?" (no write access to this room)":"");
-  }).then(function(){ sendBtn.disabled=false; input.disabled=false; input.focus(); });
+  var text=input.value.trim(); if(!text||!THREAD)return;
+  sendBtn.disabled=true; input.disabled=true; errEl.textContent="";
+  sendDM(text).then(function(){ input.value=""; input.style.height="auto"; }).catch(function(e){ errEl.textContent="Couldn't send: "+(e&&e.message||e); }).then(function(){ sendBtn.disabled=false; input.disabled=false; input.focus(); });
 }
 
+// ---- lifecycle ----
+function showWelcome(msg){ appEl.classList.remove("thread-open"); phead.style.display="none"; composer.style.display="none"; wrap.innerHTML='<div class="center"><h2>yap</h2><p class="hint">'+(msg||"Sign in (login pill, bottom-right) — ideally with <b>Nostr</b> — to message your contacts.")+'</p></div>'; }
+function boot(){
+  if(!me()){ rlist.innerHTML='<div class="rempty">Sign in to see your chats.</div>'; showWelcome(); return; }
+  if(!ntReady()){ window.addEventListener("nt-ready", boot, {once:true}); return; }
+  showWelcome("Loading your chats…");
+  Promise.all([loadKeystore(), loadRead()]).then(function(){
+    if(!myHex()){ rlist.innerHTML='<div class="rempty">No Nostr key found. Generate or import one in the <b>nostr</b> app, then reload.</div>'; showWelcome("No Nostr identity yet — set one up in the <b>nostr</b> app."); return; }
+    startGlobal();
+    buildRoster();
+    showWelcome("Pick a chat on the left, or hit <b>+ New</b>.");
+  });
+}
+
+document.getElementById("newdm").onclick=startNewDM;
+document.getElementById("back").onclick=function(){ appEl.classList.remove("thread-open"); if(THREAD&&THREAD.stop)THREAD.stop(); THREAD=null; CURRENT=null; renderRoster(); };
+document.getElementById("switch").onclick=function(){ window.alert("Pod & nostr group rooms are coming back into the roster in the next phase. For now this build focuses on 1:1 DMs."); };
+document.getElementById("device").onclick=function(){ var h=myHex(); window.alert(h?("Your Nostr identity:\n"+h+"\n\nManaged in the nostr app (Keys/Identity)."):"Sign in with Nostr, or set up a key in the nostr app."); };
 composer.addEventListener("submit",function(e){ e.preventDefault(); submitMsg(); });
 input.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submitMsg(); } });
 input.addEventListener("input",function(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,112)+"px"; });
-document.getElementById("switch").onclick=askRoom;
-document.getElementById("device").onclick=devicePanel;
-document.addEventListener("xlogin",start);
-document.addEventListener("xlogout",function(){ if(MODE==="nostr")return; closeRoom(); ROOM=null; MYNAME=null; welcome(); });
-start();
+document.addEventListener("xlogin",boot);
+document.addEventListener("xlogout",function(){ if(GLOBAL)GLOBAL(); if(THREAD&&THREAD.stop)THREAD.stop(); THREAD=null; CURRENT=null; ROSTER=[]; rlist.innerHTML='<div class="rempty">Sign in to see your chats.</div>'; showWelcome(); });
+boot();
 </script>
 </body>
 </html>

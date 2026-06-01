@@ -1,57 +1,49 @@
 # yap
 
-Minimal chat on your [Solid](https://solidproject.org) pod. One self-contained
-HTML file, no build, signs in with the universal **xlogin** pill (Solid or Nostr).
+Chat on your [Solid](https://solidproject.org) pod. One self-contained HTML file,
+no build, signs in with the universal **xlogin** pill.
 
-`yap` is the **codename / test version** of the suite's chat. The real version
-extends it into a Telegram-style desktop app with pod **and** nostr comms — built
-in phases.
+`yap` is the **chat suite** for the solid-apps ecosystem, built in phases toward a
+Telegram-style messenger over pod **and** nostr.
 
-## v1 (this) — pod rooms
+## This phase — encrypted DMs
 
-- A chat **room** is a single resource on a pod using the
-  [Solid Chat](https://solid.github.io/chat/) data model: a `meeting:LongChat`
-  with `flow:message` → `flow:Message` (`sioc:content`, `dct:created`,
-  `foaf:maker`).
-- Stored and read as **JSON-LD** via content negotiation
-  (`Accept: application/ld+json`) — every Solid server speaks it, so there's no
-  RDF/Turtle parser to ship. (Turtle interop with solid-chat/SolidOS is a later
-  phase.)
-- **Open** your room (defaults to `<pod>/public/yap.jsonld`, auto-created on first
-  use), **post** messages, and the app **polls** every few seconds for new ones.
-- Open any room by URL, or deep-link `?chat=<room-url>` (also accepts the suite's
-  `url` intent) — share a link, anyone with read access sees it; posting needs
-  write access to that resource.
+A two-pane messenger for **1:1 encrypted direct messages**:
 
-## Nostr rooms — chat across your devices
+- **Roster** (left): your conversations — contacts (`kind:3` follows) plus anyone
+  you've exchanged messages with — newest first, with avatar, last-message
+  preview, timestamps, and **unread badges** (read state saved to your pod at
+  `/private/yap/read.jsonld`).
+- **Thread** (right): a live chat. Messages are **NIP-04** encrypted (`kind:4`),
+  signed with your **WebID identity key** (read from the shared keystore at
+  `/private/nostr/keys.jsonld` — *one key, every app*), published to your relays,
+  and delivered **live** over a standing subscription.
+- **LAN-only toggle** (`🌐 → 🔒`): route a conversation over **your pod's relay +
+  the contact's relay** only, so it never touches a public relay. (Plain `ws://`
+  LAN relays only work when yap is served over **http**, e.g. your local jspod.)
+- **+ New**: start a chat from an `npub`, hex pubkey, or a WebID / pod URL
+  (resolves the key from their card's `verificationMethod`).
 
-A second room type for **live, cross-device** chat (e.g. your phone ↔ laptop ↔
-desktop), no pod or login required:
+Identity, keys, follows, and relays are managed in the **nostr** app; yap reads
+the same keystore so it's the same you everywhere.
 
-- A room is a shared channel on a **nostr relay** (default `wss://melvin.me/relay`,
-  editable via the **Device** button) keyed by a `#t` tag. Open one with
-  `nostr:<name>` (e.g. `nostr:devices`) or the welcome-screen link.
-- Each device holds its **own nostr key** (generated on first use, stored locally)
-  with an editable **label** so you can tell devices apart. Messages are
-  signed `kind:42` events; delivery is **live** over the relay's WebSocket — no
-  polling.
-- Point it at a **LAN relay** (`ws://…`) for fully-local chat — but note browsers
-  block `ws://` from an `https://` page, so a plain-`ws://` LAN relay only works
-  when yap is served over **http** (e.g. from your local jspod / solid-desktop);
-  `wss://melvin.me` works from anywhere.
+## Earlier (returning in a later phase)
 
-Purple, minimal, no theme switcher.
+Pod rooms ([Solid Chat](https://solid.github.io/chat/) `meeting:LongChat` JSON-LD)
+and live nostr **group** rooms (`kind:42`, per-device keys) shipped in the
+previous version. They're temporarily set aside while the DM shell lands, and
+fold back into the roster next.
 
 ## Later phases
 
-- Pod ↔ nostr mirroring (durable LongChat history + live nostr delivery in one
-  room); message encryption (NIP-44/NIP-17) for private rooms.
-- Real-time updates for pod rooms (WebSocket / `Updates-Via`) instead of polling.
-- Reactions (`schema:ReactAction`), edit/delete, media, markdown, Type Index
-  chat discovery, Turtle interop — then the desktop shell.
+- Group rooms (pod + nostr) back in the unified roster
+- **NIP-17** gift-wrapped DMs (hide the `p`-tag / metadata)
+- Pod ↔ nostr mirroring (durable history + live delivery), reactions, media,
+  markdown, Type Index chat discovery
 
 ## Run
 
 Static — open `index.html`, or install via the **store** to `/public/apps/yap/`.
+Needs a Nostr identity (set one up in the **nostr** app) to send DMs.
 
 AGPL-3.0-only.

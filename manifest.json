@@ -1,7 +1,7 @@
 {
   "name": "yap",
   "short_name": "yap",
-  "description": "Minimal chat — pod rooms (meeting:LongChat as JSON-LD) and live nostr rooms across your own devices via a relay. Codename for the chat suite.",
+  "description": "Encrypted DMs on your pod — a Telegram-style roster of contacts with live NIP-04 chats keyed to your WebID identity, with an optional LAN-only relay mode. Pod & nostr group rooms returning in a later phase.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
